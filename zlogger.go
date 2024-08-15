@@ -71,7 +71,7 @@ func New(level slog.Level, skipFrameCount *int) *Logger {
 }
 
 func NewWithCustomLogger(level slog.Level, skipFrameCount *int, fn ZeroLogger) *Logger {
-	sfc := setupLogger(slog.LevelInfo, skipFrameCount)
+	sfc := setupLogger(level, skipFrameCount)
 
 	logger := fn(sfc).Logger()
 	return &Logger{
@@ -85,7 +85,7 @@ func NewPrettyLogger(level slog.Level, skipFrameCount *int) *Logger {
 		return strings.ToUpper(fmt.Sprintf("| %-6s|", i))
 	}
 	output.FormatMessage = func(i interface{}) string {
-		return fmt.Sprintf("***%s****", i)
+		return fmt.Sprintf("%s", i)
 	}
 	output.FormatFieldName = func(i interface{}) string {
 		return fmt.Sprintf("%s:", i)
