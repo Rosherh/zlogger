@@ -2,10 +2,13 @@ package Logger
 
 import (
 	"context"
-	log "log/slog"
+	"fmt"
+	"log/slog"
 	"os"
+	"strings"
+	"time"
 
-	zl "github.com/rs/zerolog"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -13,8 +16,10 @@ const (
 )
 
 type Logger struct {
-	logger *zl.Logger
+	logger *zerolog.Logger
 }
+
+type ZeroLogger func(int) zerolog.Context
 
 type Interface interface {
 	ApplyContext(ctx context.Context) *Logger
@@ -28,7 +33,7 @@ type Interface interface {
 	Fatalf(message string, args ...any)
 }
 
-func New(level log.Level, skipFrameCount *int) *Logger {
+func setupLogger(level slog.Level, skipFrameCount *int) int {
 	sfc := defaultSkipFrameCount
 	if skipFrameCount != nil {
 		if *skipFrameCount < 0 {
@@ -37,28 +42,62 @@ func New(level log.Level, skipFrameCount *int) *Logger {
 			sfc = *skipFrameCount
 		}
 	}
-	var l zl.Level
+	var l zerolog.Level
 
 	switch level {
-	case log.LevelError:
-		l = zl.ErrorLevel
-	case log.LevelWarn:
-		l = zl.WarnLevel
-	case log.LevelInfo:
-		l = zl.InfoLevel
-	case log.LevelDebug:
-		l = zl.DebugLevel
+	case slog.LevelError:
+		l = zerolog.ErrorLevel
+	case slog.LevelWarn:
+		l = zerolog.WarnLevel
+	case slog.LevelInfo:
+		l = zerolog.InfoLevel
+	case slog.LevelDebug:
+		l = zerolog.DebugLevel
 	default:
-		l = zl.InfoLevel
+		l = zerolog.InfoLevel
 	}
 
-	zl.SetGlobalLevel(l)
+	zerolog.SetGlobalLevel(l)
+	return sfc
+}
 
-	logger := zl.New(os.Stdout).With().Timestamp().CallerWithSkipFrameCount(zl.CallerSkipFrameCount + sfc).Logger()
+func New(level slog.Level, skipFrameCount *int) *Logger {
+	sfc := setupLogger(level, skipFrameCount)
+	logger := zerolog.New(os.Stdout).With().Timestamp().CallerWithSkipFrameCount(zerolog.CallerSkipFrameCount + sfc).Logger()
 
 	return &Logger{
 		logger: &logger,
 	}
+}
+
+func NewWithCustomLogger(level slog.Level, skipFrameCount *int, fn ZeroLogger) *Logger {
+	sfc := setupLogger(slog.LevelInfo, skipFrameCount)
+
+	logger := fn(sfc).Logger()
+	return &Logger{
+		logger: &logger,
+	}
+}
+
+func NewPrettyLogger(level slog.Level, skipFrameCount *int) *Logger {
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	output.FormatLevel = func(i interface{}) string {
+		return strings.ToUpper(fmt.Sprintf("| %-6s|", i))
+	}
+	output.FormatMessage = func(i interface{}) string {
+		return fmt.Sprintf("***%s****", i)
+	}
+	output.FormatFieldName = func(i interface{}) string {
+		return fmt.Sprintf("%s:", i)
+	}
+	output.FormatFieldValue = func(i interface{}) string {
+		return strings.ToUpper(fmt.Sprintf("%s", i))
+	}
+
+	logger := NewWithCustomLogger(level, skipFrameCount, func(sfc int) zerolog.Context {
+		return zerolog.New(output).With().Timestamp().CallerWithSkipFrameCount(zerolog.CallerSkipFrameCount + sfc)
+	})
+	return logger
 }
 
 func (l *Logger) Err(err error) *Logger {
